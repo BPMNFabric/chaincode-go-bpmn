@@ -21,6 +21,7 @@ type ElementState int
 const (
 	DISABLE = iota
 	ENABLE
+	WAITFORCONFIRM
 	DONE
 )
 
@@ -30,6 +31,7 @@ type Message struct {
 	ReceiveMspID  string       `json:"receiveMspID"`
 	FireflyTranID string       `json:"fireflyTranID"`
 	MsgState      ElementState `json:"msgState"`
+	Format        string       `json:"format"` //存下（string name， boolean confirm， int id）
 }
 
 type Gateway struct {
@@ -42,7 +44,7 @@ type ActionEvent struct {
 	EventState ElementState `json:"eventState"`
 }
 
-type StateMemory struct {
+type StateMemory struct { // 这里字段需要小写
 	Confirm bool `json:"confirm"`
 	Cancel  bool `json:"cancel"`
 }
@@ -393,36 +395,44 @@ func (cc *SmartContract) StartEvent_1jtgn3j(ctx contractapi.TransactionContextIn
 		return fmt.Errorf(errorMessage)
 	}
 
-	actionEvent.EventState = DONE
-	actionEventJSON, err := json.Marshal(actionEvent)
-	if err != nil {
-		fmt.Println(err.Error())
-		return err
-	}
-	err = stub.PutState("StartEvent_1jtgn3j", actionEventJSON)
-	if err != nil {
-		fmt.Println(err.Error())
-		return err
-	}
+	//actionEvent.EventState = DONE
+	//actionEventJSON, err := json.Marshal(actionEvent)
+	//if err != nil {
+	//	fmt.Println(err.Error())
+	//	return err
+	//}
+	//err = stub.PutState("StartEvent_1jtgn3j", actionEventJSON)
+
+	cc.ChangeMsgState(ctx, "StartEvent_1jtgn3j", DONE)
+
+	//if err != nil {
+	//	fmt.Println(err.Error())
+	//	return err
+	//}
 
 	stub.SetEvent("StartEvent_1jtgn3j", []byte("Contract has been started successfully"))
 
-	gtw, err := cc.ReadGtw(ctx, "ExclusiveGateway_0hs3ztq")
-	if err != nil {
-		return err
-	}
+	//
 
-	gtw.GatewayState = ENABLE
-	gtwJSON, err := json.Marshal(gtw)
-	if err != nil {
-		fmt.Println(err.Error())
-		return err
-	}
-	err = stub.PutState("ExclusiveGateway_0hs3ztq", gtwJSON)
-	if err != nil {
-		fmt.Println(err.Error())
-		return err
-	}
+	//gtw, err := cc.ReadGtw(ctx, "ExclusiveGateway_0hs3ztq")
+	//if err != nil {
+	//	return err
+	//}
+
+	//gtw.GatewayState = ENABLE
+	//gtwJSON, err := json.Marshal(gtw)
+	//if err != nil {
+	//	fmt.Println(err.Error())
+	//	return err
+	//}
+	//err = stub.PutState("ExclusiveGateway_0hs3ztq", gtwJSON)
+
+	cc.ChangeGtwState(ctx, "ExclusiveGateway_0hs3ztq", ENABLE)
+
+	//if err != nil {
+	//	fmt.Println(err.Error())
+	//	return err
+	//}
 
 	cc.ExclusiveGateway_0hs3ztq(ctx)
 
@@ -476,7 +486,7 @@ func (cc *SmartContract) ExclusiveGateway_0hs3ztq(ctx contractapi.TransactionCon
 	return nil
 }
 
-func (cc *SmartContract) Message_045i10y(ctx contractapi.TransactionContextInterface, fireflyTranID string) error {
+func (cc *SmartContract) Message_045i10y_Send(ctx contractapi.TransactionContextInterface, fireflyTranID string) error {
 	stub := ctx.GetStub()
 	msg, err := cc.ReadMsg(ctx, "Message_045i10y")
 	if err != nil {
@@ -500,7 +510,7 @@ func (cc *SmartContract) Message_045i10y(ctx contractapi.TransactionContextInter
 		return fmt.Errorf(errorMessage)
 	}
 
-	msg.MsgState = DONE
+	msg.MsgState = WAITFORCONFIRM
 	msg.FireflyTranID = fireflyTranID
 	msgJSON, err := json.Marshal(msg)
 	if err != nil {
@@ -513,7 +523,53 @@ func (cc *SmartContract) Message_045i10y(ctx contractapi.TransactionContextInter
 		return err
 	}
 
-	stub.SetEvent("Message_045i10y", []byte("Message_045i10y has been done"))
+	stub.SetEvent("Message_045i10y", []byte("Message_045i10y need to be confirm"))
+
+	//msg2, err := cc.ReadMsg(ctx, "Message_0r9lypd")
+	//if err != nil {
+	//	return err
+	//}
+	//msg2.MsgState = ENABLE
+	//msg2JSON, err := json.Marshal(msg2)
+	//if err != nil {
+	//	fmt.Println(err.Error())
+	//	return err
+	//}
+	//err = stub.PutState("Message_0r9lypd", msg2JSON)
+	//if err != nil {
+	//	fmt.Println(err.Error())
+	//	return err
+	//}
+
+	return nil
+}
+
+func (cc *SmartContract) Message_045i10y_Confirm(ctx contractapi.TransactionContextInterface) error {
+	stub := ctx.GetStub()
+	msg, err := cc.ReadMsg(ctx, "Message_045i10y")
+	if err != nil {
+		return err
+	}
+
+	if msg.MsgState != WAITFORCONFIRM {
+		errorMessage := fmt.Sprintf("Msg state %s does not allowed", msg.MessageID)
+		fmt.Println(errorMessage)
+		return errors.New(fmt.Sprintf("Msg state %s does not allowed", msg.MessageID))
+	}
+
+	clientIdentity := ctx.GetClientIdentity()
+	clientMspID, _ := clientIdentity.GetMSPID()
+
+	if clientMspID != msg.ReceiveMspID {
+		errorMessage := fmt.Sprintf("Msp denied")
+		fmt.Println(errorMessage)
+		return errors.New(fmt.Sprintf("Msp denied"))
+	}
+
+	msg.MsgState = DONE
+
+	cc.ChangeMsgState(ctx, "Message_045i10y", DONE)
+	err = stub.SetEvent("Message_045i10y", []byte("Message_1nlagx2 has been done"))
 
 	msg2, err := cc.ReadMsg(ctx, "Message_0r9lypd")
 	if err != nil {
@@ -534,7 +590,7 @@ func (cc *SmartContract) Message_045i10y(ctx contractapi.TransactionContextInter
 	return nil
 }
 
-func (cc *SmartContract) Message_0r9lypd(ctx contractapi.TransactionContextInterface, fireflyTranID string, confirm bool) error {
+func (cc *SmartContract) Message_0r9lypd_Send(ctx contractapi.TransactionContextInterface, fireflyTranID string, confirm bool) error {
 	stub := ctx.GetStub()
 	msg, err := cc.ReadMsg(ctx, "Message_0r9lypd")
 	if err != nil {
@@ -558,7 +614,7 @@ func (cc *SmartContract) Message_0r9lypd(ctx contractapi.TransactionContextInter
 		return fmt.Errorf(errorMessage)
 	}
 
-	msg.MsgState = DONE
+	msg.MsgState = WAITFORCONFIRM
 	msg.FireflyTranID = fireflyTranID
 	msgJSON, err := json.Marshal(msg)
 	if err != nil {
@@ -571,10 +627,56 @@ func (cc *SmartContract) Message_0r9lypd(ctx contractapi.TransactionContextInter
 		return err
 	}
 
-	stub.SetEvent("Message_0r9lypd", []byte("Message_0r9lypd has been done"))
+	stub.SetEvent("Message_0r9lypd", []byte("Message_0r9lypd need to be confirm"))
 
 	// 设置当前内存的确认字段
 	cc.currentMemory.Confirm = confirm
+
+	//gtw, err := cc.ReadGtw(ctx, "ExclusiveGateway_106je4z")
+	//if err != nil {
+	//	return err
+	//}
+	//gtw.GatewayState = ENABLE
+	//gtwJSON, err := json.Marshal(gtw)
+	//if err != nil {
+	//	fmt.Println(err.Error())
+	//	return err
+	//}
+	//err = stub.PutState("ExclusiveGateway_106je4z", gtwJSON)
+	//if err != nil {
+	//	fmt.Println(err.Error())
+	//	return err
+	//}
+	//
+	//// 调用ExclusiveGateway_106je4z函数
+	//cc.ExclusiveGateway_106je4z(ctx)
+
+	return nil
+}
+
+func (cc *SmartContract) Message_0r9lypd_Confirm(ctx contractapi.TransactionContextInterface, fireflyTranID string, confirm bool) error {
+	stub := ctx.GetStub()
+	msg, _ := cc.ReadMsg(ctx, "Message_0r9lypd")
+
+	if msg.MsgState != WAITFORCONFIRM {
+		errorMessage := fmt.Sprintf("Msg state %s does not allowed", msg.MessageID)
+		fmt.Println(errorMessage)
+		return errors.New(fmt.Sprintf("Msg state %s does not allowed", msg.MessageID))
+	}
+
+	clientIdentity := ctx.GetClientIdentity()
+	clientMspID, _ := clientIdentity.GetMSPID()
+
+	if clientMspID != msg.ReceiveMspID {
+		errorMessage := fmt.Sprintf("Msp denied")
+		fmt.Println(errorMessage)
+		return errors.New(fmt.Sprintf("Msp denied"))
+	}
+
+	msg.MsgState = DONE
+
+	cc.ChangeMsgState(ctx, "Message_0r9lypd", DONE)
+	_ = stub.SetEvent("Message_0r9lypd", []byte("Message_1nlagx2 has been done"))
 
 	gtw, err := cc.ReadGtw(ctx, "ExclusiveGateway_106je4z")
 	if err != nil {
@@ -670,7 +772,7 @@ func (c *SmartContract) ExclusiveGateway_106je4z(ctx contractapi.TransactionCont
 	return nil
 }
 
-func (s *SmartContract) Message_1em0ee4(ctx contractapi.TransactionContextInterface, fireflyTranID string) error {
+func (s *SmartContract) Message_1em0ee4_Send(ctx contractapi.TransactionContextInterface, fireflyTranID string) error {
 	stub := ctx.GetStub()
 
 	// 读取消息
@@ -698,7 +800,7 @@ func (s *SmartContract) Message_1em0ee4(ctx contractapi.TransactionContextInterf
 	}
 
 	// 更新消息状态
-	msg.MsgState = DONE
+	msg.MsgState = WAITFORCONFIRM
 	msg.FireflyTranID = fireflyTranID
 
 	// 序列化并保存消息
@@ -714,14 +816,49 @@ func (s *SmartContract) Message_1em0ee4(ctx contractapi.TransactionContextInterf
 	}
 
 	// 设置事件
-	err = stub.SetEvent("Message_1em0ee4", []byte("Message_1em0ee4 has been done"))
+	err = stub.SetEvent("Message_1em0ee4", []byte("Message_1em0ee4 need to be confirm"))
 	if err != nil {
 		fmt.Println(err.Error())
 		return err
 	}
 
 	// 更新消息状态为ENABLE
-	err = s.ChangeMsgState(ctx, "Message_1nlagx2", ENABLE)
+	//err = s.ChangeMsgState(ctx, "Message_1nlagx2", ENABLE)
+	//if err != nil {
+	//	return err
+	//}
+	//
+	return nil
+}
+
+func (cc *SmartContract) Message_1em0ee4_Confirm(ctx contractapi.TransactionContextInterface, fireflyTranID string) error {
+	stub := ctx.GetStub()
+
+	// 读取消息
+	msg, err := cc.ReadMsg(ctx, "Message_1em0ee4")
+	if err != nil {
+		return err
+	}
+
+	if msg.MsgState != WAITFORCONFIRM {
+		errorMessage := fmt.Sprintf("Msg state %s does not allowed", msg.MessageID)
+		fmt.Println(errorMessage)
+		return errors.New(fmt.Sprintf("Msg state %s does not allowed", msg.MessageID))
+	}
+
+	clientIdentity := ctx.GetClientIdentity()
+	clientMspID, _ := clientIdentity.GetMSPID()
+
+	if clientMspID != msg.ReceiveMspID {
+		errorMessage := fmt.Sprintf("Msp denied")
+		fmt.Println(errorMessage)
+		return errors.New(fmt.Sprintf("Msp denied"))
+	}
+
+	cc.ChangeMsgState(ctx, "Message_1em0ee4", DONE)
+	err = stub.SetEvent("Message_1em0ee4", []byte("Message_1nlagx2 has been done"))
+
+	err = cc.ChangeMsgState(ctx, "Message_1nlagx2", ENABLE)
 	if err != nil {
 		return err
 	}
@@ -729,7 +866,45 @@ func (s *SmartContract) Message_1em0ee4(ctx contractapi.TransactionContextInterf
 	return nil
 }
 
-func (s *SmartContract) Message_1nlagx2(ctx contractapi.TransactionContextInterface, fireflyTranID string) error {
+func (cc *SmartContract) Message_1nlagx2_confirm(ctx contractapi.TransactionContextInterface) error {
+	stub := ctx.GetStub()
+
+	msg, _ := cc.ReadMsg(ctx, "Message_1nlagx2")
+
+	if msg.MsgState != WAITFORCONFIRM {
+		errorMessage := fmt.Sprintf("Msg state %s does not allowed", msg.MessageID)
+		fmt.Println(errorMessage)
+		return errors.New(fmt.Sprintf("Msg state %s does not allowed", msg.MessageID))
+	}
+
+	clientIdentity := ctx.GetClientIdentity()
+	clientMspID, _ := clientIdentity.GetMSPID()
+
+	if clientMspID != msg.ReceiveMspID {
+		errorMessage := fmt.Sprintf("Msp denied")
+		fmt.Println(errorMessage)
+		return errors.New(fmt.Sprintf("Msp denied"))
+	}
+
+	cc.ChangeMsgState(ctx, "Message_1nlagx2", DONE)
+	err := stub.SetEvent("Message_1nlagx2", []byte("Message_1nlagx2 has been done"))
+
+	// 更新网关状态为ENABLE
+	err = cc.ChangeGtwState(ctx, "EventBasedGateway_1fxpmyn", ENABLE)
+	if err != nil {
+		return err
+	}
+
+	// 调用EventBasedGateway_1fxpmyn方法
+	err = cc.EventBasedGateway_1fxpmyn(ctx)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *SmartContract) Message_1nlagx2_Send(ctx contractapi.TransactionContextInterface, fireflyTranID string) error {
 	stub := ctx.GetStub()
 
 	// 读取消息
@@ -757,7 +932,7 @@ func (s *SmartContract) Message_1nlagx2(ctx contractapi.TransactionContextInterf
 	}
 
 	// 更新消息状态
-	msg.MsgState = DONE
+	msg.MsgState = WAITFORCONFIRM
 	msg.FireflyTranID = fireflyTranID
 
 	// 序列化并保存消息
@@ -773,23 +948,23 @@ func (s *SmartContract) Message_1nlagx2(ctx contractapi.TransactionContextInterf
 	}
 
 	// 设置事件
-	err = stub.SetEvent("Message_1nlagx2", []byte("Message_1nlagx2 has been done"))
+	err = stub.SetEvent("Message_1nlagx2", []byte("Message_1nlagx2 wait for confirm"))
 	if err != nil {
 		fmt.Println(err.Error())
 		return err
 	}
 
-	// 更新网关状态为ENABLE
-	err = s.ChangeGtwState(ctx, "EventBasedGateway_1fxpmyn", ENABLE)
-	if err != nil {
-		return err
-	}
-
-	// 调用EventBasedGateway_1fxpmyn方法
-	err = s.EventBasedGateway_1fxpmyn(ctx)
-	if err != nil {
-		return err
-	}
+	//// 更新网关状态为ENABLE
+	//err = s.ChangeGtwState(ctx, "EventBasedGateway_1fxpmyn", ENABLE)
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//// 调用EventBasedGateway_1fxpmyn方法
+	//err = s.EventBasedGateway_1fxpmyn(ctx)
+	//if err != nil {
+	//	return err
+	//}
 
 	return nil
 }
@@ -846,7 +1021,7 @@ func (s *SmartContract) EventBasedGateway_1fxpmyn(ctx contractapi.TransactionCon
 	return nil
 }
 
-func (s *SmartContract) Message_0o8eyir(ctx contractapi.TransactionContextInterface, cancel bool, fireflyTranID string) error {
+func (s *SmartContract) Message_0o8eyir_Send(ctx contractapi.TransactionContextInterface, cancel bool, fireflyTranID string) error {
 	stub := ctx.GetStub()
 
 	// 读取消息状态
@@ -872,7 +1047,7 @@ func (s *SmartContract) Message_0o8eyir(ctx contractapi.TransactionContextInterf
 	}
 
 	// 更新消息状态为DONE
-	msg.MsgState = DONE
+	msg.MsgState = WAITFORCONFIRM
 	msg.FireflyTranID = fireflyTranID
 
 	// 序列化并保存消息状态
@@ -888,29 +1063,72 @@ func (s *SmartContract) Message_0o8eyir(ctx contractapi.TransactionContextInterf
 	}
 
 	// 设置事件
-	err = stub.SetEvent("Message_0o8eyir", []byte("Message_0o8eyir has been done"))
+	err = stub.SetEvent("Message_0o8eyir", []byte("Message_0o8eyir need to be confirm"))
 	if err != nil {
 		fmt.Println(err.Error())
 		return err
 	}
 
-	// 更新消息状态为DISABLE
-	err = s.ChangeMsgState(ctx, "Message_1xm9dxy", DISABLE)
-	if err != nil {
-		return err
-	}
-
-	// 更新网关状态为ENABLE
-	err = s.ChangeGtwState(ctx, "ExclusiveGateway_0nzwv7v", ENABLE)
-	if err != nil {
-		return err
-	}
+	//// 更新消息状态为DISABLE
+	//err = s.ChangeMsgState(ctx, "Message_1xm9dxy", DISABLE)
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//// 更新网关状态为ENABLE
+	//err = s.ChangeGtwState(ctx, "ExclusiveGateway_0nzwv7v", ENABLE)
+	//if err != nil {
+	//	return err
+	//}
 
 	// 设置当前内存状态
 	s.currentMemory.Cancel = cancel
 
 	// 跳转到ExclusiveGateway_0nzwv7v
 	return s.ExclusiveGateway_0nzwv7v(ctx)
+}
+
+func (cc *SmartContract) Message_0o8eyir_Confirm(ctx contractapi.TransactionContextInterface, cancel bool, fireflyTranID string) error {
+	stub := ctx.GetStub()
+
+	// 读取消息状态
+	msg, err := cc.ReadMsg(ctx, "Message_0o8eyir")
+	if err != nil {
+		return err
+	}
+
+	if msg.MsgState != WAITFORCONFIRM {
+		errorMessage := fmt.Sprintf("Msg state %s does not allowed", msg.MessageID)
+		fmt.Println(errorMessage)
+		return errors.New(fmt.Sprintf("Msg state %s does not allowed", msg.MessageID))
+	}
+
+	clientIdentity := ctx.GetClientIdentity()
+	clientMspID, _ := clientIdentity.GetMSPID()
+
+	if clientMspID != msg.ReceiveMspID {
+		errorMessage := fmt.Sprintf("Msp denied")
+		fmt.Println(errorMessage)
+		return errors.New(fmt.Sprintf("Msp denied"))
+	}
+
+	cc.ChangeMsgState(ctx, "Message_0o8eyir", DONE)
+	err = stub.SetEvent("Message_0o8eyir", []byte("Message_0o8eyir has been done"))
+
+	// 更新消息状态为DISABLE
+	err = cc.ChangeMsgState(ctx, "Message_1xm9dxy", DISABLE)
+	if err != nil {
+		return err
+	}
+
+	// 更新网关状态为ENABLE
+	err = cc.ChangeGtwState(ctx, "ExclusiveGateway_0nzwv7v", ENABLE)
+	if err != nil {
+		return err
+	}
+
+	return cc.ExclusiveGateway_0nzwv7v(ctx)
+
 }
 
 func (s *SmartContract) ExclusiveGateway_0nzwv7v(ctx contractapi.TransactionContextInterface) error {
@@ -997,7 +1215,7 @@ func (s *SmartContract) ExclusiveGateway_0nzwv7v(ctx contractapi.TransactionCont
 	return nil
 }
 
-func (s *SmartContract) Message_1joj7ca(ctx contractapi.TransactionContextInterface, fireflyTranID string) error {
+func (s *SmartContract) Message_1joj7ca_Send(ctx contractapi.TransactionContextInterface, fireflyTranID string) error {
 	stub := ctx.GetStub()
 
 	// 读取消息状态
@@ -1029,7 +1247,7 @@ func (s *SmartContract) Message_1joj7ca(ctx contractapi.TransactionContextInterf
 	}
 
 	// 更新消息状态为DONE
-	msg.MsgState = DONE
+	msg.MsgState = WAITFORCONFIRM
 	msg.FireflyTranID = fireflyTranID
 
 	// 序列化并保存消息状态
@@ -1045,7 +1263,7 @@ func (s *SmartContract) Message_1joj7ca(ctx contractapi.TransactionContextInterf
 	}
 
 	// 设置事件
-	err = stub.SetEvent("Message_1joj7ca", []byte("Message_1joj7ca has been done"))
+	err = stub.SetEvent("Message_1joj7ca", []byte("Message_1joj7ca need to be confirm"))
 	if err != nil {
 		fmt.Println(err.Error())
 		return err
@@ -1055,7 +1273,37 @@ func (s *SmartContract) Message_1joj7ca(ctx contractapi.TransactionContextInterf
 	return s.ChangeMsgState(ctx, "Message_1etcmvl", ENABLE)
 }
 
-func (s *SmartContract) Message_1etcmvl(ctx contractapi.TransactionContextInterface, fireflyTranID string) error {
+func (s *SmartContract) Message_1joj7ca_Confirm(ctx contractapi.TransactionContextInterface, fireflyTranID string) error {
+	stub := ctx.GetStub()
+
+	// 读取消息状态
+	msg, err := s.ReadMsg(ctx, "Message_1joj7ca")
+	if err != nil {
+		return err
+	}
+
+	if msg.MsgState != WAITFORCONFIRM {
+		errorMessage := fmt.Sprintf("Msg state %s does not allowed", msg.MessageID)
+		fmt.Println(errorMessage)
+		return errors.New(fmt.Sprintf("Msg state %s does not allowed", msg.MessageID))
+	}
+
+	clientIdentity := ctx.GetClientIdentity()
+	clientMspID, _ := clientIdentity.GetMSPID()
+
+	if clientMspID != msg.ReceiveMspID {
+		errorMessage := fmt.Sprintf("Msp denied")
+		fmt.Println(errorMessage)
+		return errors.New(fmt.Sprintf("Msp denied"))
+	}
+
+	s.ChangeMsgState(ctx, "Message_1joj7ca", DONE)
+	err = stub.SetEvent("Message_1joj7ca", []byte("Message_1joj7ca has been done"))
+
+	return s.ChangeMsgState(ctx, "Message_1etcmvl", ENABLE)
+}
+
+func (s *SmartContract) Message_1etcmvl_Send(ctx contractapi.TransactionContextInterface, fireflyTranID string) error {
 	stub := ctx.GetStub()
 
 	// 读取消息状态
@@ -1087,7 +1335,7 @@ func (s *SmartContract) Message_1etcmvl(ctx contractapi.TransactionContextInterf
 	}
 
 	// 更新消息状态为DONE
-	msg.MsgState = DONE
+	msg.MsgState = WAITFORCONFIRM
 	msg.FireflyTranID = fireflyTranID
 
 	// 序列化并保存消息状态
@@ -1103,12 +1351,59 @@ func (s *SmartContract) Message_1etcmvl(ctx contractapi.TransactionContextInterf
 	}
 
 	// 设置事件
-	err = stub.SetEvent("Message_1etcmvl", []byte("Message_1etcmvl has been done"))
+	err = stub.SetEvent("Message_1etcmvl", []byte("Message_1etcmvl need to be confirm"))
 	if err != nil {
 		fmt.Println(err.Error())
 		return err
 	}
 
+	//// 完成事件
+	//event, _ := s.ReadEvent(ctx, "EndEvent_146eii4")
+	//event.EventState = ENABLE
+	//
+	//// 序列化并保存事件状态
+	//eventJSON, err := json.Marshal(event)
+	//if err != nil {
+	//	fmt.Println(err.Error())
+	//	return err
+	//}
+	//err = stub.PutState("EndEvent_146eii4", eventJSON)
+	//if err != nil {
+	//	fmt.Println(err.Error())
+	//	return err
+	//}
+	//
+	//// 执行EndEvent_146eii4方法
+	//return s.EndEvent_146eii4(ctx)
+	return nil
+}
+
+func (s *SmartContract) Message_1etcmvl_Confirm(ctx contractapi.TransactionContextInterface, fireflyTranID string) error {
+	stub := ctx.GetStub()
+
+	// 读取消息状态
+	msg, err := s.ReadMsg(ctx, "Message_1etcmvl")
+	if err != nil {
+		return err
+	}
+
+	if msg.MsgState != WAITFORCONFIRM {
+		errorMessage := fmt.Sprintf("Msg state %s does not allowed", msg.MessageID)
+		fmt.Println(errorMessage)
+		return errors.New(fmt.Sprintf("Msg state %s does not allowed", msg.MessageID))
+	}
+
+	clientIdentity := ctx.GetClientIdentity()
+	clientMspID, _ := clientIdentity.GetMSPID()
+
+	if clientMspID != msg.ReceiveMspID {
+		errorMessage := fmt.Sprintf("Msp denied")
+		fmt.Println(errorMessage)
+		return errors.New(fmt.Sprintf("Msp denied"))
+	}
+
+	s.ChangeMsgState(ctx, "Message_1etcmvl", DONE)
+	err = stub.SetEvent("Message_1etcmvl", []byte("Message_1etcmvl has been done"))
 	// 完成事件
 	event, _ := s.ReadEvent(ctx, "EndEvent_146eii4")
 	event.EventState = ENABLE
@@ -1129,7 +1424,7 @@ func (s *SmartContract) Message_1etcmvl(ctx contractapi.TransactionContextInterf
 	return s.EndEvent_146eii4(ctx)
 }
 
-func (s *SmartContract) Message_1xm9dxy(ctx contractapi.TransactionContextInterface, fireflyTranID string) error {
+func (s *SmartContract) Message_1xm9dxy_Send(ctx contractapi.TransactionContextInterface, fireflyTranID string) error {
 	stub := ctx.GetStub()
 
 	// 读取消息状态
@@ -1161,7 +1456,7 @@ func (s *SmartContract) Message_1xm9dxy(ctx contractapi.TransactionContextInterf
 	}
 
 	// 更新消息状态为ENABLE
-	msg.MsgState = ENABLE
+	msg.MsgState = WAITFORCONFIRM
 	msg.FireflyTranID = fireflyTranID
 
 	// 序列化并保存消息状态
@@ -1177,11 +1472,59 @@ func (s *SmartContract) Message_1xm9dxy(ctx contractapi.TransactionContextInterf
 	}
 
 	// 设置事件
-	err = stub.SetEvent("Message_1xm9dxy", []byte("Message_1xm9dxy has been done"))
+	err = stub.SetEvent("Message_1xm9dxy", []byte("Message_1xm9dxy need to be confirm"))
 	if err != nil {
 		fmt.Println(err.Error())
 		return err
 	}
+
+	//// 完成事件
+	//event, _ := s.ReadEvent(ctx, "EndEvent_0366pfz")
+	//event.EventState = ENABLE
+	//
+	//// 序列化并保存事件状态
+	//eventJSON, err := json.Marshal(event)
+	//if err != nil {
+	//	fmt.Println(err.Error())
+	//	return err
+	//}
+	//err = stub.PutState("EndEvent_0366pfz", eventJSON)
+	//if err != nil {
+	//	fmt.Println(err.Error())
+	//	return err
+	//}
+	//
+	//// 执行EndEvent_0366pfz方法
+	//return s.EndEvent_0366pfz(ctx)
+	return nil
+}
+
+func (s *SmartContract) Message_1xm9dxy_Confirm(ctx contractapi.TransactionContextInterface, fireflyTranID string) error {
+	stub := ctx.GetStub()
+
+	// 读取消息状态
+	msg, err := s.ReadMsg(ctx, "Message_1xm9dxy")
+	if err != nil {
+		return err
+	}
+
+	if msg.MsgState != WAITFORCONFIRM {
+		errorMessage := fmt.Sprintf("Msg state %s does not allowed", msg.MessageID)
+		fmt.Println(errorMessage)
+		return errors.New(fmt.Sprintf("Msg state %s does not allowed", msg.MessageID))
+	}
+
+	clientIdentity := ctx.GetClientIdentity()
+	clientMspID, _ := clientIdentity.GetMSPID()
+
+	if clientMspID != msg.ReceiveMspID {
+		errorMessage := fmt.Sprintf("Msp denied")
+		fmt.Println(errorMessage)
+		return errors.New(fmt.Sprintf("Msp denied"))
+	}
+
+	s.ChangeMsgState(ctx, "Message_1xm9dxy", DONE)
+	err = stub.SetEvent("Message_1xm9dxy", []byte("Message_1xm9dxy has been done"))
 
 	// 完成事件
 	event, _ := s.ReadEvent(ctx, "EndEvent_0366pfz")
