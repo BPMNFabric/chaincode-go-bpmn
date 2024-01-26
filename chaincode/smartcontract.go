@@ -75,7 +75,7 @@ func NewStateMemory(confirm, cancel bool) *StateMemory {
 }
 
 // Create function
-func (cc *SmartContract) CreateMessage(ctx contractapi.TransactionContextInterface, messageID string, sendMspID string, receiveMspID string, fireflyTranID string, msgState ElementState) (*Message, error) {
+func (cc *SmartContract) CreateMessage(ctx contractapi.TransactionContextInterface, messageID string, sendMspID string, receiveMspID string, fireflyTranID string, msgState ElementState, format string) (*Message, error) {
 	stub := ctx.GetStub()
 
 	// 检查是否存在具有相同ID的记录
@@ -94,6 +94,7 @@ func (cc *SmartContract) CreateMessage(ctx contractapi.TransactionContextInterfa
 		ReceiveMspID:  receiveMspID,
 		FireflyTranID: fireflyTranID,
 		MsgState:      msgState,
+		Format:        format,
 	}
 
 	// 将消息对象序列化为JSON字符串并保存在状态数据库中
@@ -337,6 +338,36 @@ func (cc *SmartContract) GetAllMessages(ctx contractapi.TransactionContextInterf
 	return messages, nil
 }
 
+func (cc *SmartContract) GetAllFormats(ctx contractapi.TransactionContextInterface) ([]string, error) {
+	resultsIterator, err := ctx.GetStub().GetStateByRange("", "")
+	if err != nil {
+		return nil, fmt.Errorf("获取状态数据时出错: %v", err)
+	}
+	defer resultsIterator.Close()
+
+	formatSet := make(map[string]bool)
+	var formats []string
+	for resultsIterator.HasNext() {
+		queryResponse, err := resultsIterator.Next()
+		if err != nil {
+			return nil, fmt.Errorf("迭代状态数据时出错: %v", err)
+		}
+
+		var message Message
+		err = json.Unmarshal(queryResponse.Value, &message)
+		if err != nil {
+			return nil, fmt.Errorf("反序列化消息数据时出错: %v", err)
+		}
+
+		if _, exists := formatSet[message.Format]; !exists && message.Format != "" {
+			formats = append(formats, message.Format)
+			formatSet[message.Format] = true
+		}
+	}
+
+	return formats, nil
+}
+
 // InitLedger adds a base set of assets to the ledger
 
 var isInited bool = false
@@ -360,16 +391,16 @@ func (cc *SmartContract) InitLedger(ctx contractapi.TransactionContextInterface)
 	// cc.CreateGateway(ctx, "EndEvent_0366pfz", DISABLE)
 
 	// mspid    hotel:Participant_0sktaei       client:Participant_1080bkg
-	cc.CreateMessage(ctx, "Message_045i10y", "Participant_1080bkg", "Participant_0sktaei", "", DISABLE) // Check_room(string date, uint bedrooms)"
-	cc.CreateMessage(ctx, "Message_0r9lypd", "Participant_0sktaei", "Participant_1080bkg", "", DISABLE) // Give_availability(bool confirm)
-	cc.CreateMessage(ctx, "Message_1em0ee4", "Participant_0sktaei", "Participant_1080bkg", "", DISABLE) // Price_quotation(uint quotation)
-	cc.CreateMessage(ctx, "Message_1nlagx2", "Participant_1080bkg", "Participant_0sktaei", "", DISABLE) // Book_room(bool confirmation)
-	cc.CreateMessage(ctx, "Message_0o8eyir", "Participant_1080bkg", "Participant_0sktaei", "", DISABLE) // payment0(address payable to)
-	cc.CreateMessage(ctx, "Message_1ljlm4g", "Participant_0sktaei", "Participant_1080bkg", "", DISABLE) // Give_ID(string booking_id)
-	cc.CreateMessage(ctx, "Message_0m9p3da", "Participant_1080bkg", "Participant_0sktaei", "", DISABLE) // cancel_order(bool cancel)
-	cc.CreateMessage(ctx, "Message_1joj7ca", "Participant_1080bkg", "Participant_0sktaei", "", DISABLE) // ask_refund(string ID)
-	cc.CreateMessage(ctx, "Message_1etcmvl", "Participant_0sktaei", "Participant_1080bkg", "", DISABLE) // payment1(address payable to)
-	cc.CreateMessage(ctx, "Message_1xm9dxy", "Participant_1080bkg", "Participant_0sktaei", "", DISABLE) // Cancel_order(string motivation)
+	cc.CreateMessage(ctx, "Message_045i10y", "Participant_1080bkg", "Participant_0sktaei", "", DISABLE, "date:string, bedrooms:int") // Check_room(string date, uint bedrooms)"
+	cc.CreateMessage(ctx, "Message_0r9lypd", "Participant_0sktaei", "Participant_1080bkg", "", DISABLE, "confirm:bool")              // Give_availability(bool confirm)
+	cc.CreateMessage(ctx, "Message_1em0ee4", "Participant_0sktaei", "Participant_1080bkg", "", DISABLE, "quotation:int")             // Price_quotation(uint quotation)
+	cc.CreateMessage(ctx, "Message_1nlagx2", "Participant_1080bkg", "Participant_0sktaei", "", DISABLE, "confirmation:bool")         // Book_room(bool confirmation)
+	cc.CreateMessage(ctx, "Message_0o8eyir", "Participant_1080bkg", "Participant_0sktaei", "", DISABLE, "")                          // payment0(address payable to)
+	cc.CreateMessage(ctx, "Message_1ljlm4g", "Participant_0sktaei", "Participant_1080bkg", "", DISABLE, "bookingId:string")          // Give_ID(string booking_id)
+	cc.CreateMessage(ctx, "Message_0m9p3da", "Participant_1080bkg", "Participant_0sktaei", "", DISABLE, "cancel:bool")               // cancel_order(bool cancel)
+	cc.CreateMessage(ctx, "Message_1joj7ca", "Participant_1080bkg", "Participant_0sktaei", "", DISABLE, "ID:string")                 // ask_refund(string ID)
+	cc.CreateMessage(ctx, "Message_1etcmvl", "Participant_0sktaei", "Participant_1080bkg", "", DISABLE, "")                          // payment1(address payable to)
+	cc.CreateMessage(ctx, "Message_1xm9dxy", "Participant_1080bkg", "Participant_0sktaei", "", DISABLE, "motivation:string")         // Cancel_order(string motivation)
 
 	cc.CreateActionEvent(ctx, "EndEvent_146eii4", DISABLE)
 	cc.CreateActionEvent(ctx, "EndEvent_08edp7f", DISABLE)
